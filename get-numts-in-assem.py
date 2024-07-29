@@ -193,9 +193,9 @@ def merge_blast_output(myData):
                        continue
                     
                     if tDelt <= myData['mergeDelta'] and qDelt <= myData['mergeDelta']:
-                        print(tDelt,qDelt)
-                        print(i,hitsPerChrom[tName][i])
-                        print(j,hitsPerChrom[tName][j])
+#                        print(tDelt,qDelt)
+#                        print(i,hitsPerChrom[tName][i])
+#                        print(j,hitsPerChrom[tName][j])
                         numMerges += 1
                         # do merge                        
                         hitsPerChrom[tName][i][2] = hitsPerChrom[tName][j][2]
@@ -222,12 +222,11 @@ def merge_blast_output(myData):
 def align_numt_fragments(myData):
     # align the numt fragmnets using blast2seq again to get new coordiates
     # and to get the diversity
-    
+    print('running align_numt_fragments...')
     myData['fragAlignDir'] = myData['genomeOutDir'] + 'fragalign'
     if os.path.isdir(myData['fragAlignDir'] ) is False:
         print('make frag align dir! %s' % myData['fragAlignDir'] )
         cmd = 'mkdir %s ' % myData['fragAlignDir'] 
-        print(cmd)
         grunCMD(cmd)
     myData['fragAlignDir'] += '/'
     
@@ -235,32 +234,96 @@ def align_numt_fragments(myData):
     for line in inFile:
         line = line.rstrip()
         line = line.split()
-        print(line)
+#        print(line)
         
         extCoords = line[0] + ':' + line[1] + '-' + line[2]
         extFileName = myData['fragAlignDir'] + extCoords + '.fa'
+        extBlast = extFileName + '.out'
+        extBlastParse = extBlast + '.parse'
+
+        
+        cName = line[0]
+        cExtStart = int(line[1])
+        
+        if cExtStart != 100056541:
+            continue
+        
+        segLen = int(line[2]) - int(line[1]) + 1
         
         extCmd = 'samtools faidx %s %s > %s ' % (myData['genomeFA'],extCoords,extFileName)
-        print(extCmd)
         runCMD(extCmd)
         
-        extBlast = extFileName + '.out'
         
         cmd = 'blastn -task blastn -reward 2 -penalty -3 -gapopen 5 -gapextend 2 -evalue 0.001 -outfmt 7 -dust no -query %s -subject %s -out %s \n' % (myData['mitoRefFA'], extFileName,extBlast)
-        print(cmd)
         runCMD(cmd)
+        
+        hits = read_in_blast_hits(extBlast)
+        
+        # go through and update them all to have proper coords based on extraction
+        for i in range(len(hits)):
+            hits[i][0] = cName
+            hits[i][1] = hits[i][1] + cExtStart -1
+            hits[i][2] = hits[i][2] + cExtStart -1        
+
+        print(len(hits))
+        print(hits)
+        if len(hits) == 1:
+           nl = hits[0]
+           nl = [str(i) for i in nl]
+           nl = '\t'.join(nl) + '\n'
+           outFile = open(extBlastParse,'w')
+           outFile.write(nl)
+           outFile.close()
+        else:
+            print(hits)
+            sys.exit()
+
         
         # TO DO NEXT
         # parse hits, get final coordinates, etc...
         # add check that programs are in the proper path, etc..
         
         
-        break
     inFile.close()
     
 
 
 #####################################################################
+def read_in_blast_hits(fileName):
+    # read in blast hits
+    hits = []
+    inFile = open(fileName,'r')
+    for line in inFile:
+        if line[0] == '#':
+            continue
+        line = line.rstrip()
+        line = line.split()
+        qName = line[0]
+        sName = line[1]
+        pID = float(line[2])
+        qStart = int(line[6])
+        qEnd = int(line[7])
+        sStart = int(line[8])
+        sEnd = int(line[9])
+        eVal = float(line[10])
+        sDir = '?'
+        if sStart < sEnd:
+            sDir = '+'
+        else:
+            sDir = '-'
+            t = sStart
+            sStart = sEnd
+            sEnd = t        
+        nl = [sName,sStart,sEnd,qName,qStart,qEnd,pID,eVal,sDir]
+        hits.append(nl)
+    return hits
+#####################################################################
+
+
+
+
+
+
 # get list of genomes to do
 genomesToDo = {}
 inFile = open('resources/assems-to-do.txt','r')
