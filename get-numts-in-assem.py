@@ -80,6 +80,12 @@ def run_mito_blast2seq(myData):
 #####################################################################
 def parse_blast_output(myData):
     myData['blastParse'] = myData['mitoBLASTout'] + '.parse'
+    myData['blastParseSort'] = myData['blastParse'] + '.sort'
+    
+    if os.path.isfile(myData['blastParseSort']) is True:
+        print('skipping, already parsed and sorted!')
+        return
+    
     inFile = open(myData['mitoBLASTout'],'r')
     outFile = open(myData['blastParse'],'w')
     for line in inFile:
@@ -120,7 +126,6 @@ def parse_blast_output(myData):
     outFile.close()
     
     # sort
-    myData['blastParseSort'] = myData['blastParse'] + '.sort'
     cmd = 'sortBed -i %s > %s ' % (myData['blastParse'],myData['blastParseSort'])
     print(cmd)
     runCMD(cmd)
@@ -128,6 +133,10 @@ def parse_blast_output(myData):
 def merge_blast_output(myData):
     print('starting merge!')
     myData['blastParseSortMerged'] = myData['blastParseSort'] + '.merged'
+    if os.path.isfile(myData['blastParseSortMerged']) is True:
+        print('skipping merge, already done!')
+        return
+        
     hitsPerChrom = {}
     inFile = open(myData['blastParseSort'],'r')
     for line in inFile:
