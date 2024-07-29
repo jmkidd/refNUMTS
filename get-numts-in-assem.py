@@ -1,30 +1,64 @@
 import sys
-import genutils3
 import os
+import subprocess
+import shutil
 
 #####################################################################
-def populate_default_info(myData):
-    # setup default info that will be used for all
+# Helper function to run commands, handle return values and print to log file
+def runCMD(cmd):
+    val = subprocess.Popen(cmd, shell=True).wait()
+    if val == 0:
+        pass
+    else:
+        print('command failed')
+        print(cmd)
+        sys.exit(1)
+#############################################################################        
+# setup paths to default programs to use and checks for required programs
+def check_prog_paths(myData):        
+    print('\nChecking for required programs...\n')
     
-    myData['mitoRefFA'] = '/home/jmkidd/links/kidd-lab/jmkidd-projects/dogs/mito/NUMTS-nonref-2024/refs/NC_002008.4.fa'
-    myData['mitoRefLen'] = 16727
+    for p in ['samtools','sortBed','blastn']:
+        if shutil.which(p) is None:
+            s = p + ' not found in path! please fix (module load?)'
+            print(s, flush=True)
+            sys.exit()
+        else:
+            print(p,shutil.which(p),flush=True)
+            
+#####################################################################
+def populate_default_info(myData):
+    # setup default info that will be used for all genomes
+    # edit this as needed for your environment!
+    
+    myData['mitoRefFA'] = 'resources/NC_002008.4.fa'
+    inFile = open(myData['mitoRefFA']+'.fai','r')
+    line = inFile.readline()
+    line = line.rstrip()
+    line = line.split()
+    myData['mitoRefLen'] = int(line[1])    
+    inFile.close()
+
     myData['minEval'] = 0.001
     myData['chromsToSkipHits'] = ['chrM']
     myData['mergeDelta'] = 2000
+    
+    myData['genomeOutDirBase'] = '/home/jmkidd/links/kidd-lab/jmkidd-projects/dogs/mito/NUMTS-nonref-2024/numts-in-assem/'
     
 #####################################################################
 def run_get_genomes_in_assem(genomeName,genomeFA):
     myData = {}
     populate_default_info(myData)
+    check_prog_paths(myData)
     myData['genomeName'] = genomeName
     myData['genomeFA'] = genomeFA
     print(myData['genomeName'], myData['genomeFA'])
-    genomeOutDir = 'numts-in-assem/%s' % genomeName
+    genomeOutDir = myData['genomeOutDirBase'] + genomeName
     if os.path.isdir(genomeOutDir) is False:
         print('make genome dir! %s' % genomeOutDir)
         cmd = 'mkdir %s ' % genomeOutDir
         print(cmd)
-        genutils3.runCMD(cmd)
+        runCMD(cmd)
     myData['genomeOutDir'] = genomeOutDir + '/'
     run_mito_blast2seq(myData)
     parse_blast_output(myData)    
@@ -42,7 +76,7 @@ def run_mito_blast2seq(myData):
         # blastn options and alignment criteria from Simone et al. https://bmcgenomics.biomedcentral.com/articles/10.1186/1471-2164-12-517
         cmd = 'blastn -task blastn -reward 2 -penalty -3 -gapopen 5 -gapextend 2 -evalue 0.001 -outfmt 7 -dust no -query %s -subject %s -out %s \n' % (myData['mitoRefFA'], myData['genomeFA'],myData['mitoBLASTout'])
         print(cmd)
-        genutils3.runCMD(cmd)
+        runCMD(cmd)
 #####################################################################
 def parse_blast_output(myData):
     myData['blastParse'] = myData['mitoBLASTout'] + '.parse'
@@ -89,7 +123,7 @@ def parse_blast_output(myData):
     myData['blastParseSort'] = myData['blastParse'] + '.sort'
     cmd = 'sortBed -i %s > %s ' % (myData['blastParse'],myData['blastParseSort'])
     print(cmd)
-    genutils3.runCMD(cmd)
+    runCMD(cmd)
 #####################################################################
 def merge_blast_output(myData):
     print('starting merge!')
@@ -185,7 +219,7 @@ def align_numt_fragments(myData):
         print('make frag align dir! %s' % myData['fragAlignDir'] )
         cmd = 'mkdir %s ' % myData['fragAlignDir'] 
         print(cmd)
-        genutils3.runCMD(cmd)
+        grunCMD(cmd)
     myData['fragAlignDir'] += '/'
     
     inFile = open(myData['blastParseSortMerged'],'r')
@@ -199,13 +233,13 @@ def align_numt_fragments(myData):
         
         extCmd = 'samtools faidx %s %s > %s ' % (myData['genomeFA'],extCoords,extFileName)
         print(extCmd)
-        genutils3.runCMD(extCmd)
+        runCMD(extCmd)
         
         extBlast = extFileName + '.out'
         
         cmd = 'blastn -task blastn -reward 2 -penalty -3 -gapopen 5 -gapextend 2 -evalue 0.001 -outfmt 7 -dust no -query %s -subject %s -out %s \n' % (myData['mitoRefFA'], extFileName,extBlast)
         print(cmd)
-        genutils3.runCMD(cmd)
+        runCMD(cmd)
         
         # TO DO NEXT
         # parse hits, get final coordinates, etc...
@@ -220,7 +254,7 @@ def align_numt_fragments(myData):
 #####################################################################
 # get list of genomes to do
 genomesToDo = {}
-inFile = open('assems-to-do.txt','r')
+inFile = open('resources/assems-to-do.txt','r')
 for line in inFile:
     line = line.rstrip()
     line = line.split()
