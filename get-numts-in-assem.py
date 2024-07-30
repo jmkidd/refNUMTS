@@ -2,6 +2,8 @@ import sys
 import os
 import subprocess
 import shutil
+import argparse
+
 
 #####################################################################
 # Helper function to run commands, handle return values and print to log file
@@ -27,33 +29,10 @@ def check_prog_paths(myData):
             print(p,shutil.which(p),flush=True)
             
 #####################################################################
-def populate_default_info(myData):
-    # setup default info that will be used for all genomes
-    # edit this as needed for your environment!
-    
-    myData['mitoRefFA'] = 'resources/NC_002008.4.fa'
-    inFile = open(myData['mitoRefFA']+'.fai','r')
-    line = inFile.readline()
-    line = line.rstrip()
-    line = line.split()
-    myData['mitoRefLen'] = int(line[1])    
-    inFile.close()
-
-    myData['minEval'] = 0.001
-    myData['chromsToSkipHits'] = ['chrM']
-    myData['mergeDelta'] = 2000
-    
-    myData['genomeOutDirBase'] = '/home/jmkidd/links/kidd-lab/jmkidd-projects/dogs/mito/NUMTS-nonref-2024/numts-in-assem/'
-    
-#####################################################################
-def run_get_genomes_in_assem(genomeName,genomeFA):
-    myData = {}
-    populate_default_info(myData)
+def run_get_genomes_in_assem(myData):
     check_prog_paths(myData)
-    myData['genomeName'] = genomeName
-    myData['genomeFA'] = genomeFA
     print(myData['genomeName'], myData['genomeFA'])
-    genomeOutDir = myData['genomeOutDirBase'] + genomeName
+    genomeOutDir = myData['genomeOutDirBase'] + myData['genomeName']
     if os.path.isdir(genomeOutDir) is False:
         print('make genome dir! %s' % genomeOutDir)
         cmd = 'mkdir %s ' % genomeOutDir
@@ -319,25 +298,64 @@ def read_in_blast_hits(fileName):
     return hits
 #####################################################################
 
+#### START MAIN PROGRAM ########
+parser = argparse.ArgumentParser(description='find numts in assembly')
+
+
+parser.add_argument('--ref', type=str,help='genome fasta with .fai',required=True)
+parser.add_argument('--refname', type=str,help='name of genome',required=True)
+parser.add_argument('--mitoref', type=str,help='mitochondria fasta with .fai',required=True)
+parser.add_argument('--outdirbase', type=str,help='output directory base dir',required=True)
 
 
 
+args = parser.parse_args()
+# setup arguments
+myData = {}
+myData['mitoRefFA'] = args.mitoref
+myData['mitoRefFAfai'] = args.ref + '.fai'
+myData['genomeName'] = args.refname
+myData['genomeFA'] = args.ref
+myData['genomeFAfai'] = args.ref + '.fai'
+myData['genomeOutDirBase'] = args.outdirbase
+
+# default values
+myData['minEval'] = 0.001
+myData['chromsToSkipHits'] = ['chrM']
+myData['mergeDelta'] = 2000
+
+# check that inputs exist
+if os.path.isfile(myData['mitoRefFA']) is False:
+    print('ERROR, %s not found!' % myData['mitoRefFA'])
+    sys.exit()
+if os.path.isfile(myData['mitoRefFAfai']) is False:
+    print('ERROR, %s not found!' % myData['mitoRefFAfai'])
+    sys.exit()
+if os.path.isfile(myData['genomeFA']) is False:
+    print('ERROR, %s not found!' % myData['genomeFA'])
+    sys.exit()
+if os.path.isfile(myData['genomeFAfai']) is False:
+    print('ERROR, %s not found!' % myData['genomeFAfai'])
+    sys.exit()
 
 
-# get list of genomes to do
-genomesToDo = {}
-inFile = open('resources/assems-to-do.txt','r')
-for line in inFile:
-    line = line.rstrip()
-    line = line.split()
-    print(line)
-    genomesToDo[line[0]] = line[1]
+inFile = open(myData['mitoRefFAfai'],'r')
+line = inFile.readline()
+line = line.rstrip()
+line = line.split()
+myData['mitoRefLen'] = int(line[1])    
 inFile.close()
-print('read in %i genomes to do!' % len(genomesToDo))
+
+# check that output dir exists
+if os.path.isdir(myData['genomeOutDirBase']) is False:
+    print('ERROR %s not found' % myData['genomeOutDirBase'])
+    sys.exit()
+if myData['genomeOutDirBase'][-1] != '/':
+    myData['genomeOutDirBase'] += '/'
 
 
-for genomeName in genomesToDo:
-    run_get_genomes_in_assem(genomeName,genomesToDo[genomeName])
+# run the analysis    
+run_get_genomes_in_assem(myData)
     
 
 
