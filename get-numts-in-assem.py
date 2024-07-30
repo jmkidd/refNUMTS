@@ -213,7 +213,6 @@ def align_numt_fragments(myData):
     for line in inFile:
         line = line.rstrip()
         line = line.split()
-#        print(line)
         
         extCoords = line[0] + ':' + line[1] + '-' + line[2]
         extFileName = myData['fragAlignDir'] + extCoords + '.fa'
@@ -224,7 +223,7 @@ def align_numt_fragments(myData):
         cName = line[0]
         cExtStart = int(line[1])
         
-        if cExtStart != 100056541:
+        if cExtStart != 93992390:
             continue
         
         segLen = int(line[2]) - int(line[1]) + 1
@@ -233,37 +232,71 @@ def align_numt_fragments(myData):
         runCMD(extCmd)
         
         
-        cmd = 'blastn -task blastn -reward 2 -penalty -3 -gapopen 5 -gapextend 2 -evalue 0.001 -outfmt 7 -dust no -query %s -subject %s -out %s \n' % (myData['mitoRefFA'], extFileName,extBlast)
+        cmd = 'blastn -task blastn -reward 2 -penalty -3 -gapopen 5 -gapextend 2 -evalue 0.001 -outfmt 7 -dust no -query %s -subject %s -out %s \n' % (myData['mitoRefFADouble'], extFileName,extBlast)
         runCMD(cmd)
+
         
         hits = read_in_blast_hits(extBlast)
-        
         # go through and update them all to have proper coords based on extraction
         for i in range(len(hits)):
             hits[i][0] = cName
             hits[i][1] = hits[i][1] + cExtStart -1
             hits[i][2] = hits[i][2] + cExtStart -1        
+        
+        toRemove = []
 
-        print(len(hits))
-        print(hits)
-        if len(hits) == 1:
-           nl = hits[0]
-           nl = [str(i) for i in nl]
-           nl = '\t'.join(nl) + '\n'
-           outFile = open(extBlastParse,'w')
-           outFile.write(nl)
-           outFile.close()
-        else:
-            print(hits)
-            sys.exit()
+        for i in range(len(hits)):
+            if hits[i][4] >  myData['mitoRefLen'] and hits[i][5] > myData['mitoRefLen']:
+                toRemove.append(i)
+        for i in sorted(toRemove,reverse=True):
+            del hits[i]
+        
+        
+        # now, remove ones that fully overlap
+        
+        moreToDo = True
+        while moreToDo is True:
+            if len(hits) == 1: # nothing to merge
+                moreToDo = False
+                break
+            numMerges = 0
+            for i in range(0,len(hits)-1):
+                if numMerges > 0: # as list index might be off..
+                    break
+                for j in range(i+1,len(hits)):
+                    if hits[j][1] >= hits[i][1] and hits[j][2] <= hits[i][2]:
+                       numMerges +=1
+                       hits.pop(j)
+                       break
+            if numMerges == 0:
+                moreToDo = False
+        
+        
+       # fix names and coordinates
+        for i in range(len(hits)):       
+            hits[i][3] = myData['mitoFAName'] 
+            if hits[i][4] < myData['mitoRefLen'] and hits[i][5] <= myData['mitoRefLen']: # nothing to do
+                continue
+                
+            start1 = hits[i][4]
+            end1 = myData['mitoRefLen']
+            start2 = 1
+            end2 = hits[i][5] - myData['mitoRefLen'] 
+            
+            # convert to starts and ends blocks
+            hits[i][4] = '%i,%i' % (start1,start2)
+            hits[i][5] = '%i,%i' % (end1,end2)            
 
-        
-        # TO DO NEXT
-        # parse hits, get final coordinates, etc...
-        # add check that programs are in the proper path, etc..
-        
-        
-    inFile.close()
+
+
+        outFile = open(extBlastParse,'w')
+        for i in hits:
+            nl = [str(j) for j in i]
+            nl = '\t'.join(nl) + '\n'
+            outFile.write(nl)
+        outFile.close()     
+
+    inFile.close() # close of all merged/assembled loci
     
 
 
@@ -305,6 +338,7 @@ parser = argparse.ArgumentParser(description='find numts in assembly')
 parser.add_argument('--ref', type=str,help='genome fasta with .fai',required=True)
 parser.add_argument('--refname', type=str,help='name of genome',required=True)
 parser.add_argument('--mitoref', type=str,help='mitochondria fasta with .fai',required=True)
+parser.add_argument('--mitorefdouble', type=str,help='mitochondria fasta concatenated 2x with .fai',required=True)
 parser.add_argument('--outdirbase', type=str,help='output directory base dir',required=True)
 
 
@@ -313,7 +347,12 @@ args = parser.parse_args()
 # setup arguments
 myData = {}
 myData['mitoRefFA'] = args.mitoref
-myData['mitoRefFAfai'] = args.ref + '.fai'
+myData['mitoRefFAfai'] = args.mitoref + '.fai'
+myData['mitoRefFADouble'] = args.mitorefdouble
+myData['mitoRefFADoublefai'] = args.mitorefdouble + '.fai'
+
+
+
 myData['genomeName'] = args.refname
 myData['genomeFA'] = args.ref
 myData['genomeFAfai'] = args.ref + '.fai'
@@ -338,12 +377,20 @@ if os.path.isfile(myData['genomeFAfai']) is False:
     print('ERROR, %s not found!' % myData['genomeFAfai'])
     sys.exit()
 
+if os.path.isfile(myData['mitoRefFADouble']) is False:
+    print('ERROR, %s not found!' % myData['mitoRefFADouble'])
+    sys.exit()
+if os.path.isfile(myData['mitoRefFADoublefai']) is False:
+    print('ERROR, %s not found!' % myData['mitoRefFADoublefai'])
+    sys.exit()
+
 
 inFile = open(myData['mitoRefFAfai'],'r')
 line = inFile.readline()
 line = line.rstrip()
 line = line.split()
 myData['mitoRefLen'] = int(line[1])    
+myData['mitoFAName'] = line[0]
 inFile.close()
 
 # check that output dir exists
@@ -357,5 +404,6 @@ if myData['genomeOutDirBase'][-1] != '/':
 # run the analysis    
 run_get_genomes_in_assem(myData)
     
+
 
 
