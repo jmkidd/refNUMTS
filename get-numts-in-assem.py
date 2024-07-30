@@ -43,6 +43,7 @@ def run_get_genomes_in_assem(myData):
     parse_blast_output(myData)    
     merge_blast_output(myData)
     align_numt_fragments(myData)
+    make_combined_numt_fragments_table(myData)
 
 
 #####################################################################
@@ -137,6 +138,7 @@ def merge_blast_output(myData):
     print(len(hitsPerChrom))
     for tName in hitsPerChrom:
         print('starting %s %i' % (tName,len(hitsPerChrom[tName])))
+        
         moreToDo = True
         while moreToDo is True:
             if len(hitsPerChrom[tName]) == 1: # nothing to merge
@@ -172,12 +174,12 @@ def merge_blast_output(myData):
                        continue
                     
                     if tDelt <= myData['mergeDelta'] and qDelt <= myData['mergeDelta']:
-#                        print(tDelt,qDelt)
+#                        print('MERGE',tDelt,qDelt)
 #                        print(i,hitsPerChrom[tName][i])
-#                        print(j,hitsPerChrom[tName][j])
+#                       print(j,hitsPerChrom[tName][j])
                         numMerges += 1
                         # do merge                        
-                        hitsPerChrom[tName][i][2] = hitsPerChrom[tName][j][2]
+                        hitsPerChrom[tName][i][2] = max(hitsPerChrom[tName][j][2],hitsPerChrom[tName][i][2])
                         hitsPerChrom[tName][i][4] = qHits[0][0]                        
                         hitsPerChrom[tName][i][5] = qHits[1][1]                        
                         
@@ -224,6 +226,10 @@ def align_numt_fragments(myData):
         cExtStart = int(line[1])
         
         segLen = int(line[2]) - int(line[1]) + 1
+        
+        if os.path.isfile(extFileName) is True and os.path.isfile(extBlast) is True and os.path.isfile(extBlastParse) is True:
+            continue
+                
         
         extCmd = 'samtools faidx %s %s > %s ' % (myData['genomeFA'],extCoords,extFileName)
         runCMD(extCmd)
@@ -295,9 +301,6 @@ def align_numt_fragments(myData):
         outFile.close()     
 
     inFile.close() # close of all merged/assembled loci
-    
-
-
 #####################################################################
 def read_in_blast_hits(fileName):
     # read in blast hits
@@ -327,6 +330,62 @@ def read_in_blast_hits(fileName):
         nl = [sName,sStart,sEnd,qName,qStart,qEnd,pID,eVal,sDir]
         hits.append(nl)
     return hits
+#####################################################################
+def make_combined_numt_fragments_table(myData):
+    # align the numt fragmnets using blast2seq again to get new coordiates
+    # and to get the diversity
+    print('running make_combined_numt_fragments_table...')    
+    myData['assemTable'] = myData['blastParseSortMerged'] + '.assem_table.txt'
+    inFile = open(myData['blastParseSortMerged'],'r')
+    outFile = open(myData['assemTable'],'w')
+    
+    nl = ['#assemID','assemInterval','hspID','genomeChr','genomeStart','genomeEnd','mt','mtStart','mtEnd','orientation','blastPercentID','genomeLen','mitoLen','assemLen']
+    
+    nl = '\t'.join(nl) + '\n'
+    outFile.write(nl)
+    
+    assemNum = 1
+    for line in inFile:
+        line = line.rstrip()
+        line = line.split()
+        
+        extCoords = line[0] + ':' + line[1] + '-' + line[2]
+        extFileName = myData['fragAlignDir'] + extCoords + '.fa'
+        extBlast = extFileName + '.out'
+        extBlastParse = extBlast + '.parse'
+        
+        assemID = myData['genomeName'] + '_' + 'numtassem' + str(assemNum)
+        
+        assemLen = int(line[2]) - int(line[1]) + 1
+        hspNum = 1
+        parseIn = open(extBlastParse,'r')
+        for row in parseIn:
+            row = row.rstrip()
+            row = row.split()
+            hspID = assemID + '_hsp' + str(hspNum)
+                        
+            genomeLen = int(row[2]) - int(row[1]) + 1
+            
+
+
+            if ',' in row[4]:
+                blockStarts = row[4].split(',')
+                blockEnds = row[5].split(',')
+                blockStarts = [int(j) for j in blockStarts]
+                blockEnds = [int(j) for j in blockEnds]                
+                mitoLen = (blockEnds[0] - blockStarts[0] + 1) + (blockEnds[1] - blockStarts[1] + 1)                 
+            else:
+                mitoLen = int(row[5]) - int(row[4]) + 1
+            
+            nl = [assemID,extCoords,hspID,row[0],row[1],row[2],row[3],row[4],row[5],row[8],row[6],genomeLen,mitoLen,assemLen]
+            nl = [str(j) for j in nl]
+            nl = '\t'.join(nl) + '\n'
+            outFile.write(nl)
+            hspNum += 1
+        parseIn.close()
+        assemNum += 1
+    outFile.close()
+    inFile.close()
 #####################################################################
 
 #### START MAIN PROGRAM ########
