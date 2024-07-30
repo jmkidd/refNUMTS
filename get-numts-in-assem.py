@@ -223,9 +223,6 @@ def align_numt_fragments(myData):
         cName = line[0]
         cExtStart = int(line[1])
         
-        if cExtStart != 93992390:
-            continue
-        
         segLen = int(line[2]) - int(line[1]) + 1
         
         extCmd = 'samtools faidx %s %s > %s ' % (myData['genomeFA'],extCoords,extFileName)
@@ -287,7 +284,8 @@ def align_numt_fragments(myData):
             hits[i][4] = '%i,%i' % (start1,start2)
             hits[i][5] = '%i,%i' % (end1,end2)            
 
-
+        # sort hits
+        hits.sort(key=lambda x: x[1])
 
         outFile = open(extBlastParse,'w')
         for i in hits:
