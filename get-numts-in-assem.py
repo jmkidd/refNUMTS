@@ -213,7 +213,7 @@ def align_numt_fragments(myData):
     if os.path.isdir(myData['fragAlignDir'] ) is False:
         print('make frag align dir! %s' % myData['fragAlignDir'] )
         cmd = 'mkdir %s ' % myData['fragAlignDir'] 
-        grunCMD(cmd)
+        runCMD(cmd)
     myData['fragAlignDir'] += '/'
     
     inFile = open(myData['blastParseSortMerged'],'r')
