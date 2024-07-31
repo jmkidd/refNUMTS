@@ -30,6 +30,7 @@ def check_prog_paths(myData):
             
 #####################################################################
 def run_get_genomes_in_assem(myData):
+    # This is the main driver script that runs all of the analysis steps
     check_prog_paths(myData)
     print(myData['genomeName'], myData['genomeFA'])
     genomeOutDir = myData['genomeOutDirBase'] + myData['genomeName']
@@ -44,10 +45,10 @@ def run_get_genomes_in_assem(myData):
     merge_blast_output(myData)
     align_numt_fragments(myData)
     make_combined_numt_fragments_table(myData)
-
-
 #####################################################################
 def run_mito_blast2seq(myData):
+    # this runs blast2seq with blastn of the mito fasta
+    # against the genome fasta
     print('in run_mito_blast2seq')
     myData['mitoBLASTout'] = myData['genomeOutDir'] + myData['genomeName'] + '.blast.out'
     if os.path.isfile(myData['mitoBLASTout']) is False:
@@ -59,6 +60,7 @@ def run_mito_blast2seq(myData):
         runCMD(cmd)
 #####################################################################
 def parse_blast_output(myData):
+    # performs initial parse of blast2seq output
     myData['blastParse'] = myData['mitoBLASTout'] + '.parse'
     myData['blastParseSort'] = myData['blastParse'] + '.sort'
     
@@ -98,7 +100,6 @@ def parse_blast_output(myData):
             sEnd = t        
         nl = [sName,sStart,sEnd,qName,qStart,qEnd,pID,eVal,sDir]
         
-#        print(nl)
         nl = '\t'.join(nl) + '\n'
         outFile.write(nl)
 
@@ -111,7 +112,10 @@ def parse_blast_output(myData):
     runCMD(cmd)
 #####################################################################
 def merge_blast_output(myData):
+    # merges initial hits into assembled loci
+    # based on distance on the genome and on the mito chromosome
     print('starting merge!')
+    print('merge delta threshold is',myData['mergeDelta'])
     myData['blastParseSortMerged'] = myData['blastParseSort'] + '.merged'
     if os.path.isfile(myData['blastParseSortMerged']) is True:
         print('skipping merge, already done!')
@@ -174,9 +178,6 @@ def merge_blast_output(myData):
                        continue
                     
                     if tDelt <= myData['mergeDelta'] and qDelt <= myData['mergeDelta']:
-#                        print('MERGE',tDelt,qDelt)
-#                        print(i,hitsPerChrom[tName][i])
-#                       print(j,hitsPerChrom[tName][j])
                         numMerges += 1
                         # do merge                        
                         hitsPerChrom[tName][i][2] = max(hitsPerChrom[tName][j][2],hitsPerChrom[tName][i][2])
@@ -202,7 +203,11 @@ def merge_blast_output(myData):
 #####################################################################
 def align_numt_fragments(myData):
     # align the numt fragmnets using blast2seq again to get new coordiates
-    # and to get the diversity
+    # and to get the sequence identity
+    # this searches againts a fasta that has the mito sequence repeated
+    # so that hsps that cross the circular boundary can be found
+    # this allows for a better HSP count and for estimate of sequence identity
+    
     print('running align_numt_fragments...')
     myData['fragAlignDir'] = myData['genomeOutDir'] + 'fragalign'
     if os.path.isdir(myData['fragAlignDir'] ) is False:
@@ -229,25 +234,24 @@ def align_numt_fragments(myData):
         
         if os.path.isfile(extFileName) is True and os.path.isfile(extBlast) is True and os.path.isfile(extBlastParse) is True:
             continue
-                
         
+        # extract fragments and search with blast2seq                
         extCmd = 'samtools faidx %s %s > %s ' % (myData['genomeFA'],extCoords,extFileName)
         runCMD(extCmd)
-        
-        
+                
         cmd = 'blastn -task blastn -reward 2 -penalty -3 -gapopen 5 -gapextend 2 -evalue 0.001 -outfmt 7 -dust no -query %s -subject %s -out %s \n' % (myData['mitoRefFADouble'], extFileName,extBlast)
         runCMD(cmd)
 
         
         hits = read_in_blast_hits(extBlast)
-        # go through and update them all to have proper coords based on extraction
+        # go through and update them all to have proper chrom coords based on extraction
         for i in range(len(hits)):
             hits[i][0] = cName
             hits[i][1] = hits[i][1] + cExtStart -1
             hits[i][2] = hits[i][2] + cExtStart -1        
         
+        # remove hits that are entirely in 2nd copy of mito
         toRemove = []
-
         for i in range(len(hits)):
             if hits[i][4] >  myData['mitoRefLen'] and hits[i][5] > myData['mitoRefLen']:
                 toRemove.append(i)
@@ -255,8 +259,7 @@ def align_numt_fragments(myData):
             del hits[i]
         
         
-        # now, remove ones that fully overlap
-        
+        # now, remove ones that fully overlap, don't want these sub hits
         moreToDo = True
         while moreToDo is True:
             if len(hits) == 1: # nothing to merge
@@ -286,7 +289,7 @@ def align_numt_fragments(myData):
             start2 = 1
             end2 = hits[i][5] - myData['mitoRefLen'] 
             
-            # convert to starts and ends blocks
+            # convert to starts and ends blocks when cross boundary
             hits[i][4] = '%i,%i' % (start1,start2)
             hits[i][5] = '%i,%i' % (end1,end2)            
 
@@ -299,11 +302,10 @@ def align_numt_fragments(myData):
             nl = '\t'.join(nl) + '\n'
             outFile.write(nl)
         outFile.close()     
-
     inFile.close() # close of all merged/assembled loci
 #####################################################################
 def read_in_blast_hits(fileName):
-    # read in blast hits
+    # read in blast hits into list of lists
     hits = []
     inFile = open(fileName,'r')
     for line in inFile:
@@ -332,8 +334,8 @@ def read_in_blast_hits(fileName):
     return hits
 #####################################################################
 def make_combined_numt_fragments_table(myData):
-    # align the numt fragmnets using blast2seq again to get new coordiates
-    # and to get the diversity
+    # makes summary table based on alignment to the doubled mito fasta
+    # adds assembly and HSP ids to the table
     print('running make_combined_numt_fragments_table...')    
     myData['assemTable'] = myData['blastParseSortMerged'] + '.assem_table.txt'
     inFile = open(myData['blastParseSortMerged'],'r')
@@ -365,8 +367,6 @@ def make_combined_numt_fragments_table(myData):
             hspID = assemID + '_hsp' + str(hspNum)
                         
             genomeLen = int(row[2]) - int(row[1]) + 1
-            
-
 
             if ',' in row[4]:
                 blockStarts = row[4].split(',')
@@ -391,13 +391,11 @@ def make_combined_numt_fragments_table(myData):
 #### START MAIN PROGRAM ########
 parser = argparse.ArgumentParser(description='find numts in assembly')
 
-
 parser.add_argument('--ref', type=str,help='genome fasta with .fai',required=True)
 parser.add_argument('--refname', type=str,help='name of genome',required=True)
 parser.add_argument('--mitoref', type=str,help='mitochondria fasta with .fai',required=True)
 parser.add_argument('--mitorefdouble', type=str,help='mitochondria fasta concatenated 2x with .fai',required=True)
 parser.add_argument('--outdirbase', type=str,help='output directory base dir',required=True)
-
 
 
 args = parser.parse_args()
@@ -407,8 +405,6 @@ myData['mitoRefFA'] = args.mitoref
 myData['mitoRefFAfai'] = args.mitoref + '.fai'
 myData['mitoRefFADouble'] = args.mitorefdouble
 myData['mitoRefFADoublefai'] = args.mitorefdouble + '.fai'
-
-
 
 myData['genomeName'] = args.refname
 myData['genomeFA'] = args.ref
