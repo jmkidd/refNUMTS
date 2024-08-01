@@ -5,6 +5,20 @@ import numpy as np
 import shutil
 import argparse
 
+
+# setup paths to default programs to use and checks for required programs
+def check_prog_paths():        
+    print('\nChecking for required programs...\n')
+    
+    for p in ['samtools','minimap2']:
+        if shutil.which(p) is None:
+            s = p + ' not found in path! please fix (module load?)'
+            print(s, flush=True)
+            sys.exit()
+        else:
+            print(p,shutil.which(p),flush=True)
+##################################################################################
+
 #### START MAIN PROGRAM ########
 parser = argparse.ArgumentParser(description='find numts in assembly')
 
@@ -17,8 +31,6 @@ parser.add_argument('--targetfasta', type=str,help='target genome fasta',require
 parser.add_argument('--outdirbase', type=str,help='output directory base dir',required=True)
 
 
-parser.add_argument('--mitoref', type=str,help='mitochondria fasta with .fai',required=True)
-parser.add_argument('--mitorefdouble', type=str,help='mitochondria fasta concatenated 2x with .fai',required=True)
 
 args = parser.parse_args()
 
@@ -57,6 +69,8 @@ cmd = 'mkdir %s ' % outDir
 if os.path.isdir(outDir) is False:
     genutils3.runCMD(cmd)
 outDir += '/'
+
+check_prog_paths()
 
 
 print('reading in assembled numt regions from %s' % sourceRegions)
