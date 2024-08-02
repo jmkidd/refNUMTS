@@ -158,7 +158,7 @@ for line in inFile:
     if pafFields['tName'] == 'chrM':
         continue
     
-    tHit = pafFields['tName'] + ':' + str(pafFields['tStart'])+ '-' + str(pafFields['tEnd'])
+    tHit = pafFields['tName'] + ':' + str(pafFields['tStart']+1)+ '-' + str(pafFields['tEnd'])
         
     
     currentPos = 0
